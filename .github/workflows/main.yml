@@ -22,7 +22,6 @@ jobs:
         uses: stCarolas/setup-maven@v4.5
         with:
          maven-version: 3.8.2
-          mvn clean install
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1

@@ -19,21 +19,6 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: eu-central-1
       
-      - name: Checkout code
-        uses: actions/checkout@v2
-      - name: Build with Maven
-        uses: maven/setup-java@v1
-        with:
-          java-version: "11"
-          maven-version: 3.8.3
-      - name: Package JAR
-        run: mvn package
-      - name: Upload artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: my-artifact
-          path: target/my-project-1.0-SNAPSHOT.jar
-      
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1

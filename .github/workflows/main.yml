@@ -5,6 +5,7 @@ name: Deploy to ECR
       - master
 jobs:
   build:
+    
     name: Build Image
     runs-on: ubuntu-latest
     steps:
@@ -17,6 +18,9 @@ jobs:
           aws-secret-access-key: '${{ secrets.AWS_SECRET_ACCESS_KEY }}'
           aws-session-token: '${{ secrets.AWS_SESSION_TOKEN }}'
           aws-region: eu-central-1
+      - name: build code
+          runs:|-
+          mvn clean install
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1

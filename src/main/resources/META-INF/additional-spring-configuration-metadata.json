@@ -1,0 +1,112 @@
+{"properties": [
+  {
+    "name": "memcached.cluster.endpoint.hostname",
+    "type": "java.lang.String",
+    "description": "A description for 'memcached.cluster.endpoint.hostname'"
+  },
+  {
+    "name": "memcached.cluster.endpoint.port",
+    "type": "java.lang.String",
+    "description": "A description for 'memcached.cluster.endpoint.port'"
+  },
+  {
+    "name": "memcached.client.shutdown.timeout.in.secs",
+    "type": "java.lang.String",
+    "description": "A description for 'memcached.client.shutdown.timeout.in.secs'"
+  },
+  {
+    "name": "amazon.dynamodb.endpoint",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.endpoint'"
+  },
+  {
+    "name": "amazon.aws.accesskey",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.aws.accesskey'"
+  },
+  {
+    "name": "amazon.aws.secretkey",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.aws.secretkey'"
+  },
+  {
+    "name": "amazon.aws.region",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.aws.region'"
+  },
+  {
+    "name": "cache.type",
+    "type": "java.lang.String",
+    "description": "A description for 'cache.type'"
+  },
+  {
+    "name": "amazon.dynamodb.connection.timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.connection.timeout'"
+  },
+  {
+    "name": "amazon.dynamodb.execution.timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.execution.timeout'"
+  },
+  {
+    "name": "amazon.dynamodb.request.timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.request.timeout'"
+  },
+  {
+    "name": "amazon.dynamodb.socket.timeout",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.socket.timeout'"
+  },
+  {
+    "name": "amazon.dynamodb.retry.count",
+    "type": "java.lang.String",
+    "description": "A description for 'amazon.dynamodb.retry.count'"
+  },
+  {
+    "name": "connection.time.out",
+    "type": "java.lang.String",
+    "description": "A description for 'connection.time.out'"
+  },
+  {
+    "name": "request.time.out",
+    "type": "java.lang.String",
+    "description": "A description for 'request.time.out'"
+  },
+  {
+    "name": "socket.time.out",
+    "type": "java.lang.String",
+    "description": "A description for 'socket.time.out'"
+  },
+  {
+    "name": "max.total.connections",
+    "type": "java.lang.String",
+    "description": "A description for 'max.total.connections'"
+  },
+  {
+    "name": "idle.connection.wait.time",
+    "type": "java.lang.String",
+    "description": "A description for 'idle.connection.wait.time'"
+  },
+  {
+    "name": "keep.alive.time",
+    "type": "java.lang.String",
+    "description": "A description for 'keep.alive.time'"
+  },
+  {
+    "name": "enable.twoway.ssl",
+    "type": "java.lang.String",
+    "description": "A description for 'enable.twoway.ssl'"
+  },
+  {
+    "name": "scheduler.pool.size",
+    "type": "java.lang.String",
+    "description": "A description for 'scheduler.pool.size'"
+  },
+  {
+    "name": "jwk.provider.url",
+    "type": "java.lang.String",
+    "description": "A description for 'jwk.provider.url'"
+  }
+]}

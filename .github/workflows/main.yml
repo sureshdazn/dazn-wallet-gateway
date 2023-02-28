@@ -26,10 +26,6 @@ jobs:
         aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
         aws-region: eu-central-1
 
-    - name: Set up Maven
-      with:
-        uses: actions/checkout@v3
-        maven-version: 3.8.2
     - name: Package with maven
       run: mvn package
 

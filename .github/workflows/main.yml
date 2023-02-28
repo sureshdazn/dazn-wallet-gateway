@@ -29,7 +29,8 @@ jobs:
     - name: Set up Maven
       with:
         maven-version: 3.8.2
-        run: mvn --batch-mode --update-snapshots package
+    - name: Package with maven
+      run: mvn package
 
     - name: Login to Amazon ECR
       id: login-ecr

@@ -21,7 +21,7 @@ jobs:
       - name: Set up Maven
         uses: stCarolas/setup-maven@v4.5
         with:
-         maven-version: 3.8.2
+         maven-version: 2.7.9
          java-version: 8
 
       - name: Build with Maven

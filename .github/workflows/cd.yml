@@ -1,0 +1,136 @@
+name: CD
+
+on:
+  workflow_dispatch:
+    inputs:
+      env:
+        description: "environment to deploy. dev | stage | test | prod"
+        required: true
+
+env:
+  TERRAFORM_VERSION: 1.1.0
+  # variables for wait-for-stable-cluster
+  aws-account-id: "029720204697"
+  env: dev
+  short-region: eu
+
+jobs:
+  setup-terraform-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+        (github.event.inputs.env == 'dev' ||
+         github.event.inputs.env == 'stage' ||
+         github.event.inputs.env == 'prod')
+      )
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+
+      - name: Setup Matrix Combinations
+        id: setup-matrix-combinations
+        run: |
+          node ./setup-deploy-matrix.js
+          MATRIX_PARAMS_COMBINATIONS=$(<matrix.config)
+          SERVICE_MATRIX_PARAMS_COMBINATIONS=$(<service.config)
+          echo ::set-output name=matrix-combinations::$MATRIX_PARAMS_COMBINATIONS
+          echo ::set-output name=service-matrix-combinations::$SERVICE_MATRIX_PARAMS_COMBINATIONS
+        working-directory: .github/scripts
+        env:
+          IS_DEV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.env == 'dev'}}
+          IS_STAGE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.env == 'stage'}}
+          IS_PROD: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.env == 'prod'}}
+    outputs:
+      matrix-combinations: ${{ steps.setup-matrix-combinations.outputs.matrix-combinations }}
+      service-matrix-combinations: ${{ steps.setup-matrix-combinations.outputs.service-matrix-combinations }}
+
+  terraform-apply:
+    needs: [setup-terraform-matrix]
+    name: "tf apply (${{matrix.MODULE}}, ${{matrix.ENVIRONMENT}}, ${{matrix.REGION}})"
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup-terraform-matrix.outputs.matrix-combinations) }}
+
+    env:
+      AWS_REGION: ${{ matrix.REGION }}
+      TF_PLAN_OUT: plan-${{ matrix.ENVIRONMENT }}.tfout
+      TF_WORKING_DIR: terraform/${{ matrix.MODULE }}
+      TARGET: ${{ matrix.ENVIRONMENT }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ matrix.ENVIRONMENT }}
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ matrix.AWS_ROLE_TO_ASSUME }}
+
+      - id: short-sha
+        run: echo "::set-output name=SHORT_SHA::${GITHUB_SHA:0:10}"
+
+#      - name: vault auth
+#        id: "vault-auth"
+#        uses: getndazn/vault-action@v2
+#        with:
+#          environment: ${{ matrix.ENVIRONMENT }}
+#          role: ${{ github.event.repository.name }}
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: "Get Private getndazn Access"
+        run: git config --global url."https://${{ secrets.GLOBAL_GITHUB_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: "Terraform Apply"
+        uses: ./.github/actions/terraform-cicd
+        with:
+          TF_WORKING_DIR: ${{ env.TF_WORKING_DIR }}
+          TF_PLAN_OUT: ${{ env.TF_PLAN_OUT }}
+          TF_VAR_FILE: ${{ matrix.TF_VAR_FILE }}
+          TF_BACKEND_CONFIG: ${{ matrix.TF_BACKEND_CONFIG }}
+          TF_VAR_GIT_COMMIT: ${{ steps.short-sha.outputs.SHORT_SHA }}
+#          VAULT_TOKEN: ${{ steps.vault-auth.outputs.vault-token }}
+#          VAULT_ADDRESS: ${{ steps.vault-auth.outputs.vault-address }}
+          RUN_APPLY: true
+
+  wait-for-service-deployment:
+    name: Wait for service to be stable
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: docker://707907454361.dkr.ecr.eu-central-1.amazonaws.com/wait-for-deployment:2.0.0
+      credentials:
+        username: AWS
+        password: ${{ secrets.GLOBAL_ECR_707907454361_DKR_ECR_EU_CENTRAL_1_AMAZONAWS_COM_PASSWORD }}
+    needs: terraform-apply
+    if: ${{ !failure() }}
+    env:
+      AWS_REGION: eu-central-1
+      AWS_ROLE_TO_ASSUME: arn:aws:iam::251511879130:role/automation-gha-ci
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Wait for stable serviceмик
+        env:
+          PLUGIN_SERVICE_NAME: partner-onboarding
+          PLUGIN_TARGET_REGIONS: ${{ env.AWS_REGION }}
+        run: node /opt/app/main.js

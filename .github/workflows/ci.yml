@@ -1,0 +1,165 @@
+name: CI
+
+on: [workflow_dispatch, push]
+
+env:
+  TERRAFORM_VERSION: 1.1.0
+
+jobs:
+  hooks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: "Checkout code"
+        uses: actions/checkout@v2
+
+      - name: "setup JDK 17"
+        uses: actions/setup-java@v1
+        with:
+          java-version: "17"
+          distribution: temurin
+          cache: maven
+
+      - name: "Build with Maven"
+        run: mvn --batch-mode --update-snapshots package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GLOBAL_JFROG_ARTIFACTORY_TOKEN }}
+
+
+#      ##############==========(add any)
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: "Setup TFLint"
+        run: |
+          curl -L "$(curl -s https://api.github.com/repos/terraform-linters/tflint/releases/latest | grep -o -E "https://.+?_linux_amd64.zip")" > tflint.zip && unzip tflint.zip && rm tflint.zip && sudo mv tflint /usr/bin/
+#      - name: "Run hooks"
+#        run: |
+#          npm run precommit:CI
+
+  setup-terraform-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+
+   ##   - name: Setup Matrix Combinations
+        id: setup-matrix-combinations
+        run: |
+          node ./setup-deploy-matrix.js
+          MATRIX_PARAMS_COMBINATIONS=$(<matrix.config)
+          echo ::set-output name=matrix-combinations::$MATRIX_PARAMS_COMBINATIONS ##
+        working-directory: .github/scripts
+        env:
+          IS_DEV: true
+          IS_TEST: true
+          IS_STAGE: true
+          IS_PROD: true
+    outputs:
+      matrix-combinations: ${{ steps.setup-matrix-combinations.outputs.matrix-combinations }}
+
+  terraform-plan:
+    needs: [hooks, setup-terraform-matrix]
+    name: "tf plan (${{matrix.MODULE}}, ${{matrix.ENVIRONMENT}}, ${{matrix.REGION}})"
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup-terraform-matrix.outputs.matrix-combinations) }}
+
+    env:
+      AWS_REGION: ${{ matrix.REGION }}
+      TF_PLAN_OUT: plan-${{ matrix.ENVIRONMENT }}.tfout
+      TF_WORKING_DIR: terraform/${{ matrix.MODULE }}
+      TARGET: ${{ matrix.ENVIRONMENT }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ matrix.AWS_ROLE_TO_ASSUME }}
+
+      - id: short-sha
+        run: echo "::set-output name=SHORT_SHA::${GITHUB_SHA:0:10}"
+
+#      - name: vault auth
+#        id: "vault-auth"
+#        uses: getndazn/vault-action@v2
+#        with:
+#          environment: ${{ matrix.ENVIRONMENT }}
+#          role: ${{ github.event.repository.name }}
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: "Get Private getndazn Access"
+        run: git config --global url."https://${{ secrets.GLOBAL_GITHUB_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: "Terraform Plan"
+        uses: ./.github/actions/terraform-cicd
+        with:
+          TF_WORKING_DIR: ${{ env.TF_WORKING_DIR }}
+          TF_PLAN_OUT: ${{ env.TF_PLAN_OUT }}
+          TF_VAR_FILE: ${{ matrix.TF_VAR_FILE }}
+          TF_BACKEND_CONFIG: ${{ matrix.TF_BACKEND_CONFIG }}
+          TF_VAR_GIT_COMMIT: ${{ steps.short-sha.outputs.SHORT_SHA }}
+#          VAULT_TOKEN: ${{ steps.vault-auth.outputs.vault-token }}
+#          VAULT_ADDRESS: ${{ steps.vault-auth.outputs.vault-address }}
+
+  docker-build:
+    needs: [hooks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GLOBAL_GITHUB_TOKEN }}
+
+      - uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+          role-to-assume: arn:aws:iam::707907454361:role/automation-gha-ci
+
+      - run: |
+          echo "//npm.daznplatform.com/:_authToken=${{ secrets.GLOBAL_JFROG_ARTIFACTORY_TOKEN}}" >> .npmrc
+      - uses: aws-actions/amazon-ecr-login@v1
+        id: login-ecr
+
+      - id: short-sha
+        run: echo "::set-output name=SHORT_SHA::${GITHUB_SHA:0:10}"
+
+      - id: tag-prefix
+        run: |
+          if [ "${GITHUB_REF##*/}" == "master" ]; then
+            tag_prefix="rc"
+          else
+            tag_prefix="unstable"
+          fi
+          echo "::set-output name=TAG_PREFIX::${tag_prefix}"
+          echo ${tag_prefix}
+      - name: build & push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: partner-onboarding-registry
+        run: |
+          echo $ECR_REGISTRY/$ECR_REPOSITORY
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.short-sha.outputs.SHORT_SHA }} -t $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.tag-prefix.outputs.TAG_PREFIX }}-${{ steps.short-sha.outputs.SHORT_SHA }} .
+          docker push --all-tags $ECR_REGISTRY/$ECR_REPOSITORY

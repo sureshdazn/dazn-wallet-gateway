@@ -1,0 +1,90 @@
+name: Destroy Test Env
+
+on: [workflow_dispatch]
+
+env:
+  TERRAFORM_VERSION: 1.1.0
+
+jobs:
+  setup-terraform-matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/setup-node@v2
+
+      - name: Setup Matrix Combinations
+        id: setup-matrix-combinations
+        run: |
+          node ./setup-deploy-matrix.js
+          MATRIX_PARAMS_COMBINATIONS=$(<matrix.config)
+          echo ::set-output name=matrix-combinations::$MATRIX_PARAMS_COMBINATIONS
+        working-directory: .github/scripts
+        env:
+          IS_DEV: false
+          IS_TEST: true
+          IS_STAGE: false
+          IS_PROD: false
+          IS_GLOBAL: false
+    outputs:
+      matrix-combinations: ${{ steps.setup-matrix-combinations.outputs.matrix-combinations }}
+
+  terraform-plan:
+    needs: [ hooks, setup-terraform-matrix ]
+    name: "tf plan (${{matrix.MODULE}}, ${{matrix.ENVIRONMENT}}, ${{matrix.REGION}})"
+    permissions:
+      id-token: write
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup-terraform-matrix.outputs.matrix-combinations) }}
+
+    env:
+      AWS_REGION: ${{ matrix.REGION }}
+      TF_PLAN_OUT: plan-${{ matrix.ENVIRONMENT }}.tfout
+      TF_WORKING_DIR: terraform/${{ matrix.MODULE }}
+      TARGET: ${{ matrix.ENVIRONMENT }}
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ matrix.AWS_ROLE_TO_ASSUME }}
+
+      - id: short-sha
+        run: echo "::set-output name=SHORT_SHA::${GITHUB_SHA:0:10}"
+
+      - name: vault auth
+        id: "vault-auth"
+        uses: getndazn/vault-action@v2
+        with:
+          environment: ${{ matrix.ENVIRONMENT }}
+          role: ${{ github.event.repository.name }}
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: "Get Private getndazn Access"
+        run: git config --global url."https://${{ secrets.GLOBAL_GITHUB_TOKEN }}@github.com".insteadOf "https://github.com"
+
+      - name: "Terraform Plan"
+        uses: ./.github/actions/terraform-cicd
+        with:
+          TF_WORKING_DIR: ${{ env.TF_WORKING_DIR }}
+          TF_PLAN_OUT: ${{ env.TF_PLAN_OUT }}
+          TF_VAR_FILE: ${{ matrix.TF_VAR_FILE }}
+          TF_BACKEND_CONFIG: ${{ matrix.TF_BACKEND_CONFIG }}
+          TF_VAR_GIT_COMMIT: ${{ steps.short-sha.outputs.SHORT_SHA }}
+          VAULT_TOKEN: ${{ steps.vault-auth.outputs.vault-token }}
+          VAULT_ADDRESS: ${{ steps.vault-auth.outputs.vault-address }}

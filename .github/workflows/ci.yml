@@ -1,7 +1,9 @@
 name: CI
 
-on: [workflow_dispatch, push]
-
+on:
+  push:
+    branches:
+      - master
 env:
   TERRAFORM_VERSION: 1.1.0
 

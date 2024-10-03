@@ -34,7 +34,7 @@
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-java-sdk-dynamodb</artifactId>
-			<version>1.12.272</version>
+			<version>1.12.773</version>
 		</dependency>
 		<dependency>
 			<groupId>com.github.derjust</groupId>
